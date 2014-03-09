@@ -1,0 +1,10 @@
+{
+	"name": "pack-d",
+	"description": "Binary I/O helper",
+	"authors": ["Robert Pasiński"],
+	"homepage": "http://github.com/robik/pack-d",
+	"license": "MIT",
+	"dependencies": {
+	},
+	"targetType": "sourceLibrary"
+}

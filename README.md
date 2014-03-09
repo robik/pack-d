@@ -19,6 +19,7 @@ Pack-D is small binary IO helper written in [D Programming Language](http://dlan
 
 ```D
 import binary.pack;
+import std.stdio;
 
 void main()
 {
@@ -33,7 +34,7 @@ void main()
     writefln("%d %d %d", a, b, c); // 20 30 40
     
     /// Pack 2 shorts and a string
-    bytes = pack!`hhs`(42, 18, "hello, world!")
+    bytes = pack!`hhs`(42, 18, "hello, world!");
     writeln(bytes.unpack!`hhs`); /// Tuple!(short, short, string)(42, 18, "hello, world!")
 }
 ```
