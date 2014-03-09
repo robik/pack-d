@@ -6,5 +6,5 @@
 	"license": "MIT",
 	"dependencies": {
 	},
-	"targetType": "sourceLibrary"
+	"targetType": "library"
 }
