@@ -7,7 +7,7 @@ Licensed under `MIT License`. See `LICENSE` file.
 
 ### About
 
-Pack-D is small binary IO helper written in [D Programming Language](http://dlang.org) based on Python's `struct` module.
+Pack-D is small binary IO helper written in [D Programming Language](http://dlang.org) based on Python's `struct` module. It provides simple interface for reading and writing binary encoded data.
 
 
 ### Installation
@@ -18,7 +18,7 @@ Download `source/binary/pack.d` and add it to your project.
 
 __Using DUB__
 
-Add this dependency to your `package.json` file:
+Add `pack-d` dependency to your `package.json` file:
 
     "dependencies": {
     	"pack-d": ">=0.1.0"
@@ -57,17 +57,19 @@ void main()
 ### Format reference
 
 Most Pack-D functions use a format string to define types of values. 
-Format string can be ommited and value types are inferred,
+Format strings can be ommited and value types are inferred,
 although it is strongly recommended to specify it whenever possible.
+
+Format strings used in general are very similar to [format strings used by Python's `struct` module](http://docs.python.org/2/library/struct.html#format-strings).
 
 __Available modifier characters__
   
   Character   | Effect
   ------------|--------------------
-  `=`         | Change to native endian
-  `<`         | Change to little endian
-  `>`         | Change to big endian
-  `@`         | Change to network byte order(big endian)
+  `=`         | Use native endian byte order
+  `<`         | Use little endian byte order
+  `>`         | Use big endian byte order
+  `@`         | Use network byte order(big endian)
   
 
 __Available type specifiers__
@@ -93,13 +95,17 @@ __Available type specifiers__
 
 
 > __TIP__: Common rule for (almost) all type specifiers is that all lowercase letters represent signed types and
-uppercase letters represent unsigned type.
+uppercase letters represent unsigned types.
+
+Types with size `4/8` (`p` and `P`) depend on local machine architecture. On 32 bit architectures they occupy 4 bytes, on 64 bit architectures they occupy 8 bytes.
 
 Additionaly all type specifiers can be preceded by number of occurences.
 For example, `pack!"cc"('a', 'b')` is equivalent to `pack!"2c"('a', 'b')`.
 Note that behaviour is different with strings: if type specifier is preceded by
 a number and parameter is an array, `n` characters are packed.
 For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
+
+Character `x` have slighty different meaning depending if used in `pack` or `unpack` functions. When passed to `pack`, null byte is added to output. When passed to `unpack`, one byte is skipped from input data.
 
 __Examples__:
 
@@ -145,4 +151,5 @@ __Examples__:
        writeln(num, " ", str); // Prints 1 one\n 2 two
    }
    ```
+
 
