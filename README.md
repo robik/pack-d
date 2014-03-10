@@ -5,14 +5,24 @@
 Licensed under `MIT License`. See `LICENSE` file.
 
 
-### Installation
-
-Download `source/pack.d` and add it to your project.
-
-
 ### About
 
 Pack-D is small binary IO helper written in [D Programming Language](http://dlang.org) based on Python's `struct` module.
+
+
+### Installation
+
+__Manual__
+
+Download `source/binary/pack.d` and add it to your project.
+
+__Using DUB__
+
+Add this dependency to your `package.json` file:
+
+    "dependencies": {
+    	"pack-d": ">=0.1.0"
+    }
 
 
 ### Example
@@ -36,6 +46,11 @@ void main()
     /// Pack 2 shorts and a string
     bytes = pack!`hhs`(42, 18, "hello, world!");
     writeln(bytes.unpack!`hhs`); /// Tuple!(short, short, string)(42, 18, "hello, world!")
+    
+    /// Pack ushort, uint and ulong (big endian)
+    bytes = pack!`>HIL`(42, 80, 150);
+    /// Unpack ushort, skip 4 bytes and unpack ulong
+    writeln(bytes.unpack!`>H4xL`); /// Tuple!(ushort, ulong)(42, 150)
 }
 ```
 
@@ -86,6 +101,12 @@ Note that behaviour is different with strings: if type specifier is preceded by
 a number and parameter is an array, `n` characters are packed.
 For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
 
+__Examples__:
+
+ - `2h`  2 signed shorts (native endian)
+ - `<2I` 2 insigned integers (little endian)
+ - `i4xL` signed integer, 4 null bytes and unsigned long
+ - `Sx` or `s` null terminated string
 
 ### Quick API reference
 
@@ -100,7 +121,7 @@ For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
 
  - `unpack([string format])([ref] Range range, T... params)`
    
-   Unpacks data from `range` and writes it to `params`. Range is taken by refernce is possible (`auto ref`), which means
+   Unpacks data from `range` and writes it to `params`. Range is taken by refernce whenever possible (`auto ref`), which means
    passed array of bytes is modified. To prevent that, pass `yourarray.save` as first parameter.
 
    > __NOTE__: Specified `Range` must be a valid input range of `ubyte` element type.

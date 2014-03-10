@@ -130,23 +130,24 @@ ubyte[] pack(string format, Endian endianess = Endian.Native, T, V...)(T value, 
 	// Repeats
 	else static if (isDigit(format[0]))
 	{
-		// Index where digits end
+		// Creates aliases in local scope like firstNonDigit, count etc.
 		mixin repeatCount!format;
-		
+
 		static if(isArray!T)
 		{
 			assert(value.length + 1 >= count);
 			buf.reserve(T[0].sizeof * count);
 			for(int i = 0; i < count; ++i)
 				buf ~= encodeBinary!endianess(value[i]);
-			
-			static if(firstNonDigit + 1 <= format.length)
-				buf ~= pack!(format[firstNonDigit + 1..$], endianess)(values);
+
+			static if(firstNonDigit + 1 <= format.length && V.length)
+				buf ~= pack!(format[firstNonDigit+1..$], endianess)(values);
 		}
 		else static if(type == 'x')
 		{
 			buf ~= (cast(ubyte)0).repeat(count).array;
-			buf ~= pack!(format[firstNonDigit + 1..$], endianess)(value, values);
+			static if(firstNonDigit + 1 <= format.length && V.length)
+				buf ~= pack!(format[firstNonDigit + 1..$], endianess)(value, values);
 		}
 		else
 		{
