@@ -40,7 +40,7 @@ void main()
     bytes = pack(20, 30, 40);
     
     /// Unpack 3 integers from bytes to a, b and c
-    bytes.unpack(a, b, c);
+    bytes.unpackTo(a, b, c);
     writefln("%d %d %d", a, b, c); // 20 30 40
     
     /// Pack 2 shorts and a string
@@ -105,6 +105,8 @@ Note that behaviour is different with strings: if type specifier is preceded by
 a number and parameter is an array, `n` characters are packed.
 For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
 
+When number appears in `unpack` format string, returned type is an static array. For example, type of `unpack!"6h"` is `short[6]`.
+
 Character `x` have slighty different meaning depending if used in `pack` or `unpack` functions. When passed to `pack`, null byte is added to output. When passed to `unpack`, one byte is skipped from input data.
 
 __Examples__:
@@ -125,10 +127,12 @@ __Examples__:
    
    Works exacly like previous one, except that all packed data is written to `file`.
 
- - `unpack([string format])([ref] Range range, T... params)`
+ - `unpackTo([string format])([ref] Range range, T... params)` <br/>
+   `unpackTo([string format])(File range, T... params)`
    
-   Unpacks data from `range` and writes it to `params`. Range is taken by refernce whenever possible (`auto ref`), which means
-   passed array of bytes is modified. To prevent that, pass `yourarray.save` as first parameter.
+   Unpacks data from `range` or `file` and writes it to `params`. Range is taken by refernce whenever possible 
+   (`auto ref`), which means passed array of bytes is modified. To prevent that, pass `yourarray.save` as 
+   first parameter.
 
    > __NOTE__: Specified `Range` must be a valid input range of `ubyte` element type.
   
@@ -138,9 +142,10 @@ __Examples__:
    Works exacly like previous one, except that all data is returned as tuple. 
    In this overload `format` is __required__.
 
- - `unpacker(string format)(Range range)`
+ - `unpacker(string format)( Range range)` <br/>
+   `unpacker(string format)(File range)` <br/>
    
-   Returns instance of `Unpacker` struct. Usefull when there's repeating binary encoded data.
+   Returns instance of `Unpacker` struct. Useful when there's repeating binary encoded data.
 
    ```D
    ubyte[] bytes = pack!`<hshs`(1, "one", 2, "two");
@@ -151,5 +156,6 @@ __Examples__:
        writeln(num, " ", str); // Prints 1 one\n 2 two
    }
    ```
+
 
 

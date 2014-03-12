@@ -34,14 +34,15 @@ module binary.pack;
 import std.bitmanip;
 import std.array;
 import std.ascii 	 : isDigit, isAlpha;
-import std.algorithm : countUntil, map, joiner;
+import std.algorithm : countUntil, map, joiner, until, OpenRight;
 import std.conv 	 : to;
 import std.stdio 	 : File;
-import std.traits 	 : isSomeString, isArray, Unqual;
+import std.traits 	 : isSomeString, isArray, Unqual, isDynamicArray, isStaticArray;
 import std.typecons  : tuple, Tuple;
 import std.typetuple : TypeTuple;
-import std.range	 : repeat, isInputRange, ElementType, take, popFrontN, isForwardRange;
+import std.range	 : repeat, isInputRange, ElementType, isForwardRange, take, popFrontN;
 import std.string	 : format, startsWith;
+import core.stdc.stdio : getc, ungetc, EOF;
 
 
 /**
@@ -105,26 +106,25 @@ enum Endian
  * For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
  *
  * Params:
- *  format 		= Format specifier
- *  endianess 	= Endianess to use, Endian.Native is default.
- *  value 		= Value to pack
- *  values... 	= Values to pack
+ *  format      = Format specifier
+ *  endianess   = Endianess to use, Endian.Native is default.
+ *  values...   = Values to pack
  */
-ubyte[] pack(string format, Endian endianess = Endian.Native, T, V...)(T value, V values)
-	if (!is(T == File))
+ubyte[] pack(string format, Endian endianess = Endian.Native, V...)(V values)
+	if (!isFirstArgFile!V)
 {
 	ubyte[] buf;
 	
 	// Can't work with empty format
 	static assert(format.length > 0, "Empty format string");
-
+	
 	// Endianess modifiers
 	static if (formatCharToEndian!(format[0]) != -1)
 	{
 		static if (format.length < 2)
 			return;
 		
-		buf ~= pack!(format[1..$], formatCharToEndian!(format[0]))(value, values);
+		buf ~= pack!(format[1..$], formatCharToEndian!(format[0]))(values);
 	}
 
 	// Repeats
@@ -133,30 +133,36 @@ ubyte[] pack(string format, Endian endianess = Endian.Native, T, V...)(T value, 
 		// Creates aliases in local scope like firstNonDigit, count etc.
 		mixin repeatCount!format;
 
-		static if(isArray!T)
-		{
-			assert(value.length + 1 >= count);
-			buf.reserve(T[0].sizeof * count);
-			for(int i = 0; i < count; ++i)
-				buf ~= encodeBinary!endianess(value[i]);
-
-			static if(firstNonDigit + 1 <= format.length && V.length)
-				buf ~= pack!(format[firstNonDigit+1..$], endianess)(values);
-		}
-		else static if(type == 'x')
+		static if(type == 'x')
 		{
 			buf ~= (cast(ubyte)0).repeat(count).array;
-			static if(firstNonDigit + 1 <= format.length && V.length)
-				buf ~= pack!(format[firstNonDigit + 1..$], endianess)(value, values);
+			static if(firstNonDigit + 1 <= format.length)
+				buf ~= pack!(format[firstNonDigit + 1..$], endianess)(values);
 		}
 		else
 		{
-			static assert(values.length + 1 >= count);
-			buf.reserve(T.sizeof * count);
-			buf ~= pack!(type.repeat(count).array, endianess)(value, values);
+			static assert(V.length > 0, .format("No parameter specified for type %c", type));
+			alias T = V[0];
+			
+			static if(isArray!T)
+			{
+				assert(values[0].length + 1 >= count);
+				buf.reserve(T[0].sizeof * count);
+				for(int i = 0; i < count; ++i)
+					buf ~= encodeBinary!endianess(values[0][i]);
 
-			static if(firstNonDigit + 1 < format.length)
-				buf ~= pack!(format[firstNonDigit + 1..$], endianess)(values[times-1..$]);
+				static if(firstNonDigit + 1 <= format.length)
+					buf ~= pack!(format[firstNonDigit+1..$], endianess)(values[1..$]);
+			}
+			else
+			{
+				static assert(values.length + 1 >= count, .format("Expected %d parameters", count));
+				buf.reserve(T.sizeof * count);
+				buf ~= pack!(type.repeat(count).array, endianess)(values);
+
+				static if(firstNonDigit + 1 < format.length)
+					buf ~= pack!(format[firstNonDigit + 1..$], endianess)(values[count..$]);
+			}
 		}
 	}
 
@@ -164,32 +170,35 @@ ubyte[] pack(string format, Endian endianess = Endian.Native, T, V...)(T value, 
 	else static if (format[0] == 'x')
 	{
 		buf ~= 0;
-		buf ~= pack!(format[1..$], endianess)(value, values);
+		
+		static if(format.length > 1)
+			buf ~= pack!(format[1..$], endianess)(values);
+		
 		return buf;
 	}
 
 	// Type characters
 	else static if (__traits(compiles, formatTypeOf!(format[0])))
 	{
+		static assert(V.length > 0, .format("No parameter specified for type %c", type));
+		
 		// If value is convertible to format character
-		static if (__traits(compiles, cast(formatTypeOf!(format[0]))value)) {
-			buf ~= encodeBinary!endianess( cast(formatTypeOf!(format[0]))value );
+		static if (__traits(compiles, cast(formatTypeOf!(format[0]))values[0])) {
+			buf ~= encodeBinary!endianess( cast(formatTypeOf!(format[0]))values[0] );
 			if (format[0] == 's')
 				buf ~= 0;
 		}
 		else
 		{
 			static assert(0, .format("Incompatible types: %s and %s, format character '%c'",
-			                         T.stringof, formatTypeOf!(format[0]).stringof, format[0]));
+			                         V[0].stringof, formatTypeOf!(format[0]).stringof, format[0]));
 		}
 		
 		// Missing parameter for format character
-		static if (V.length > 0) {
-			static assert(format.length != 1, "Format/parameters length mismatch");
-			buf ~= pack!(format[1..$], endianess)(values);
+		static if (format.length > 1) {
+			buf ~= pack!(format[1..$], endianess)(values[1..$]);
 		}
 	}
-
 	else {
 		static assert (0, .format("Invalid format specifier %c", format[0]));
 	}
@@ -212,7 +221,7 @@ ubyte[] pack(string format, Endian endianess = Endian.Native, T, V...)(T value, 
  *  file 		= File to write data to
  *  values... 	= Values to pack
  */
-void pack(string format, Endian endianess = Endian.Native, T...)(File file, T values)
+void pack(string format, Endian endianess = Endian.Native, V...)(File file, V values)
 {
 	file.rawWrite(pack!(format, endianess)(values));
 }
@@ -228,13 +237,11 @@ void pack(string format, Endian endianess = Endian.Native, T...)(File file, T va
  * 
  * Params:
  *  endianess 	= Endianess to use, Endian.Native is default.
- *  value 		= Value to pack
  *  values... 	= Values to pack
  */
-ubyte[] pack(Endian endianess = Endian.Native, T, V...)(T value, V values)
-	if (!is(T == File))
+ubyte[] pack(Endian endianess = Endian.Native, V...)(V values)
 {
-	return pack!(formatOf!(T, V), endianess)(value, values);
+	return pack!(formatOf!V, endianess)(values);
 }
 
 
@@ -253,9 +260,9 @@ ubyte[] pack(Endian endianess = Endian.Native, T, V...)(T value, V values)
  *  file 		= File to write data to
  *  values... 	= Values to pack
  */
-void pack(Endian endianess = Endian.Native, T...)(File file, T values)
+ubyte[] pack(Endian endianess = Endian.Native, V...)(File file, V values)
 {
-	file.rawWrite(pack!(formatOf!T, endianess)(values));
+	return pack!(formatOf!V, endianess)(file, values);
 }
 
 
@@ -273,52 +280,66 @@ void pack(Endian endianess = Endian.Native, T...)(File file, T values)
  *  format 		= Format specifier
  *  endianess 	= Endianess to use, Endian.Native is default.
  *  data 		= Data to unpack
- *  value 		= Value to unpack to
  *  values... 	= Values to un pack to
  */
-void unpack(string format, Endian endianess = Endian.Native, Range, T, V...)(auto ref Range data, ref T value, ref V values)
+void unpackTo(string format, Endian endianess = Endian.Native, Range, V...)(auto ref Range data, ref V values)
 	if(isInputRange!Range && is(ElementType!Range == ubyte))
 {
 	// Can't work with empty format
 	static assert(format.length > 0, "Empty format string");
-	
+
 	// Endianess modifiers
 	static if (formatCharToEndian!(format[0]) != -1)
 	{
 		static if (format.length < 2)
 			return;
 
-		unpack!(format[1..$], formatCharToEndian!(format[0]))(data, value, values);
+		unpackTo!(format[1..$], formatCharToEndian!(format[0]))(data, values);
 	}
 	
 	// Repeats
 	else static if (isDigit(format[0]))
 	{
 		mixin repeatCount!format;
-		
-		static if(isArray!T)
-		{
-			if (value.length < count)
-				value.length = count;
 
-			for(int i = 0; i < count; ++i)
-				value[i] = decodeBinary!(typeof(value[0]), endianess)(data);
-			
-			static if(firstNonDigit + 1 < format.length)
-				unpack!(format[firstNonDigit + 1..$], endianess)(data, values);
-		}
-		else static if(type == 'x')
+		static if(type == 'x')
 		{
 			data.popFrontN(count);
-			unpack!(format[firstNonDigit + 1..$], endianess)(data, value, values);
+			
+			static if(firstNonDigit + 1 < format.length)
+				unpackTo!(format[firstNonDigit + 1..$], endianess)(data, values);
 		}
 		else
 		{
-			static assert(values.length + 1 >= count);
-			unpack!(type.repeat(count).array, endianess)(data, value, values);
+			static assert(V.length > 0, .format("No parameter specified for type %c", type));
+			alias T = V[0];
 			
-			static if(firstNonDigit + 1 < format.length)
-				unpack!(format[firstNonDigit + 1..$], endianess)(data, values[count-1..$]);
+			static if(isArray!T)
+			{
+				static if(isDynamicArray!T) {
+					if (values[0].length < count)
+						values[0].length = count;
+				}
+				else static if(isStaticArray!T) {
+					static if (count > values[0].length) {
+						static assert(0, .format("Static array '%s' is to small to contain %d elements", V[0].stringof, count));
+					}
+				}
+
+				for(int i = 0; i < count; ++i)
+					values[0][i] = decodeBinary!(typeof(values[0][0]), endianess)(data);
+				
+				static if(firstNonDigit + 1 < format.length)
+					unpackTo!(format[firstNonDigit + 1..$], endianess)(data, values[1..$]);
+			}
+			else
+			{
+				static assert(values.length + 1 >= count);
+				unpackTo!(type.repeat(count).array, endianess)(data, values);
+				
+				static if(firstNonDigit + 1 < format.length)
+					unpackTo!(format[firstNonDigit + 1..$], endianess)(data, values[count..$]);
+			}
 		}
 	}
 
@@ -326,15 +347,19 @@ void unpack(string format, Endian endianess = Endian.Native, Range, T, V...)(aut
 	else static if(format[0] == 'x')
 	{
 		data.popFront();
-		unpack!(format[1..$], endianess)(data, value, values);
+		
+		static if(format.length > 1)
+			unpackTo!(format[1..$], endianess)(data, values);
 	}
 
 	// Type characters
-	else static if (__traits(compiles, cast(formatTypeOf!(format[0]))value ))
+	else static if (__traits(compiles, cast(formatTypeOf!(format[0]))values[0] ))
 	{
+		static assert(V.length > 0, .format("No parameter specified for type %c", format[0]));
+		
 		// If value is convertible to format character
-		static if ( __traits(compiles, cast(T)cast(formatTypeOf!(format[0]))(value)) ) {
-			value = cast(T)decodeBinary!(formatTypeOf!(format[0]), endianess)(data);
+		static if ( __traits(compiles, cast(V[0])cast(formatTypeOf!(format[0]))(values[0])) ) {
+			values[0] = cast(V[0])decodeBinary!(formatTypeOf!(format[0]), endianess)(data);
 		}
 		else
 		{
@@ -342,9 +367,8 @@ void unpack(string format, Endian endianess = Endian.Native, Range, T, V...)(aut
 		}
 		
 		// Missing parameter for format character
-		static if (V.length > 0) {
-			static assert(format.length != 1, "Format/parameters length mismatch");
-			unpack!(format[1..$], endianess)(data, values);
+		static if (format.length > 1) {
+			unpackTo!(format[1..$], endianess)(data, values[1..$]);
 		}
 	}
 	
@@ -370,12 +394,12 @@ void unpack(string format, Endian endianess = Endian.Native, Range, T, V...)(aut
  *  endianess 	= Endianess to use, Endian.Native is default.
  *  data 		= Data to unpack
  *  value 		= Value to unpack to
- *  values... 	= Values to un pack to
+ *  values... 	= Values to unpack to
  */
-void unpack(Endian endianess = Endian.Native, Range, T, V...)(auto ref Range range, ref T value, ref V values)
+void unpackTo(Endian endianess = Endian.Native, Range, T, V...)(auto ref Range range, ref T value, ref V values)
 	if (isInputRange!Range && is(ElementType!Range == ubyte))
 {
-	unpack!(formatOf!(T, V))(range, value, values);
+	unpackTo!(formatOf!(T, V))(range, value, values);
 }
 
 
@@ -398,9 +422,11 @@ void unpack(Endian endianess = Endian.Native, Range, T, V...)(auto ref Range ran
  *  value 		= Value to unpack to
  *  values... 	= Values to un pack to
  */
-void unpack(string format, Endian endianess = Endian.Native, T, V...)(File file, ref T value, ref V values)
+void unpackTo(string format, Endian endianess = Endian.Native, V...)(File file, ref V values)
 {
-	unpack!(format, endianess)(file.byChunk(1).joiner, value, values);
+	if (file.tell > 0)
+		file.seek(-1, std.stdio.SEEK_CUR);
+	unpackTo!(format, endianess)(file.byChunk(1).joiner, values);
 }
 
 
@@ -423,9 +449,9 @@ void unpack(string format, Endian endianess = Endian.Native, T, V...)(File file,
  *  value 		= Value to unpack to
  *  values... 	= Values to un pack to
  */
-void unpack(Endian endianess = Endian.Native, T, V...)(File file, ref T value, ref V values)
+void unpackTo(Endian endianess = Endian.Native, V...)(File file, ref V values)
 {
-	unpack!(formatOf!(T, V))(file, value, values);
+	unpackTo!(formatOf!V, endianess)(file, values);
 }
 
 
@@ -446,9 +472,9 @@ void unpack(Endian endianess = Endian.Native, T, V...)(File file, ref T value, r
 auto unpack(string format, Endian endianess = Endian.Native, Range)(auto ref Range data)
 	if(isInputRange!Range && is(ElementType!Range == ubyte))
 {
-	formatTypeTupleOf!format tuple;
-	unpack!(format, endianess)(data, tuple);
-	return .tuple(tuple);
+	formatTypeTupleOf!format tup;
+	unpackTo!(format, endianess)(data, tup);
+	return tuple(tup);
 }
 
 
@@ -468,9 +494,103 @@ auto unpack(string format, Endian endianess = Endian.Native, Range)(auto ref Ran
  */
 auto unpack(string format, Endian endianess = Endian.Native)(File file)
 {
-	formatTypeTupleOf!format tuple;
-	unpack!(format, endianess)(file, tuple);
-	return .tuple(tuple);
+	Tuple!(formatTypeTupleOf!format) tup;
+	unpackTo!(format, endianess)(file, tup.expand);
+	return tup;
+}
+
+
+
+/**
+ * Returns an instance of unpacker of T.
+ * 
+ * Params:
+ *  format 		= Format specifier
+ *  endianess	= Endianess to use
+ *  range 		= Range to read from
+ */
+auto unpacker(string format, Endian endianess = Endian.Native, R)(auto ref R range)
+	if (isInputRange!R && is(ElementType!R == ubyte))
+{
+	return Unpacker!(format, endianess, R)(range);
+}
+
+auto unpacker(string format, Endian endianess = Endian.Native)(File file)
+{
+	return Unpacker!(format, endianess, File)(file);
+}
+
+
+/**
+ * Unpacker range.
+ * 
+ * Allows to unpack repeated binary encoded entries with range interface.
+ * 
+ * Examples:
+ * ----
+ * ubyte[] bytes = pack!`<hshs`(1, "one", 2, "two");
+ * 
+ * foreach(num, str; bytes) {
+ * 	   writeln(num, " ", str);
+ * }
+ * ----
+ */
+struct Unpacker(string format, Endian endianess = Endian.Native, R)
+	if ((isInputRange!R && is(ElementType!R == ubyte)) || is(R == File))
+{
+	/**
+	 * Alias for type tuple
+	 */
+	alias Type = formatTypeTupleOf!format;
+
+	/**
+	 * Source range/file to read from.
+	 */
+	R source;
+
+	
+	/**
+	 * Tuple of unpacked elements
+	 */
+	Tuple!Type front;
+	
+	/**
+	 * Determines if more data can be unpacked.
+	 */
+	bool empty;
+
+	
+	/**
+	 * Creates instance of Unpacker.
+	 * 
+	 * Params:
+	 *  range = Range of ubytes to unpack from.
+	 */
+	this(R range)
+	{
+		source = range;
+		popFront();
+	}
+
+	
+	/**
+	 * Unpacks next element from source range.
+	 */
+	void popFront()
+	{
+		static if(is(R == File)) {
+			//int c = ungetc(getc(source.getFP), source.getFP);
+			empty = source.eof;//= c == EOF;
+		}
+		else {
+			empty = source.empty;
+		}
+		
+		if (empty) return;
+		
+		front.expand = front.expand.init;
+		source.unpackTo!(format, endianess)(front.expand);
+	}
 }
 
 
@@ -514,87 +634,6 @@ ubyte[] encodeBinary(Endian endianess = Endian.Native, T)(T value)
 
 
 /**
- * Returns an instance of unpacker of T.
- * 
- * Params:
- *  format 		= Format specifier
- *  endianess	= Endianess to use
- *  range 		= Range to read from
- */
-auto unpacker(string format, Endian endianess = Endian.Native, R)(R range)
-{
-	return Unpacker!(format, endianess, R)(range);
-}
-
-
-/**
- * Unpacker range.
- * 
- * Allows to unpack repeated binary encoded entries with range interface.
- * 
- * Examples:
- * ----
- * ubyte[] bytes = pack!`<hshs`(1, "one", 2, "two");
- * 
- * foreach(num, str; bytes) {
- * 	   writeln(num, " ", str);
- * }
- * ----
- */
-struct Unpacker(string format, Endian endianess = Endian.Native, R)
-	if (isInputRange!R && is(ElementType!R == ubyte))
-{
-	/**
-	 * Alias for type tuple
-	 */
-	alias Type = formatTypeTupleOf!format;
-
-	/**
-	 * Source range to read from.
-	 */
-	R source;
-
-	
-	/**
-	 * Tuple of unpacked elements
-	 */
-	Tuple!Type front;
-
-	
-	/**
-	 * Determines if more data can be unpacked.
-	 */
-	bool empty;
-
-	
-	/**
-	 * Creates instance of Unpacker.
-	 * 
-	 * Params:
-	 *  range = Range of ubytes to unpack from.
-	 */
-	this(R range)
-	{
-		source = range;
-		empty = range.empty;
-		popFront();
-	}
-
-	
-	/**
-	 * Unpacks next element from source range.
-	 */
-	void popFront()
-	{
-		empty = source.empty;
-
-		if (empty) return;
-		unpack!(format, endianess)(source, front.expand);
-	}
-}
-
-
-/**
  * Decodes binary data.
  * 
  * This function decodes binary encoded value of type T from data.
@@ -617,11 +656,11 @@ struct Unpacker(string format, Endian endianess = Endian.Native, R)
 T decodeBinary(T, Endian endianess = Endian.Native, Range)(auto ref Range range)
 	if(isInputRange!Range && !isSomeString!T && is(ElementType!Range == ubyte) && !is(T == void))
 {
-	auto data = range.take(T.sizeof).array;
-
-	static if(isForwardRange!Range)
+	ubyte[] data = range.take(T.sizeof).array;
+	
+	static if (isForwardRange!Range)
 		range.popFrontN(T.sizeof);
-
+	
 	if (data.length < T.sizeof)
 		throw new DecodeException("Input buffer too small");
 
@@ -642,7 +681,6 @@ T decodeBinary(T, Endian endianess = Endian.Native, Range)(auto ref Range range)
 	return value;
 }
 
-
 /**
  * Decodes binary strings.
  * 
@@ -656,23 +694,20 @@ T decodeBinary(T, Endian endianess = Endian.Native, Range)(auto ref Range range)
  * Params:
  *  data = Binary datta
  */
-T decodeBinary(T, Endian endianess = Endian.Native, Range)(auto ref Range data)
+T decodeBinary(T, Endian endianess = Endian.Native, Range)(auto ref Range range)
 	if(isSomeString!T && isInputRange!Range && is(ElementType!Range == ubyte))
 {
-	char[] buf;
-	size_t i;
+	char[] data;
 	
-	while (!data.empty) {
-		if (data.front == 0) {
-			data.popFront();
-			break;
-		}
-		buf ~= data.front;
-		i += 1;
-		data.popFront();
-	}
-
-	return buf[0..i].idup;
+	data = cast(char[])range.until(0).array;
+	static if(isForwardRange!Range)
+		range.popFrontN(data.length);
+	
+	
+	if (!range.empty && range.front == 0)
+		range.popFront();
+	
+	return data.idup;
 }
 
 
@@ -811,10 +846,17 @@ template formatTypeTupleOf(string format)
 		enum count = to!int(format[0..firstNonDigit]);
 		enum type = format[firstNonDigit];
 		static assert(firstNonDigit == countUntil!isAlpha(format), "Digit cannot be followed by endianess modifier");
-		static if (firstNonDigit + 1 < format.length)
-			alias formatTypeTupleOf = TypeTuple!(formatTypeTupleOf!(type.repeat(count).array), formatTypeTupleOf!(format[firstNonDigit+1..$]));
+		static if (type == 'x')
+		{
+			static if (firstNonDigit + 1 < format.length)
+				alias formatTypeTupleOf = formatTypeTupleOf!(format[firstNonDigit+1..$]);
+			else 
+				alias formatTypeTupleOf = TypeTuple!();
+		}
+		else static if (firstNonDigit + 1 < format.length)
+			alias formatTypeTupleOf = TypeTuple!(formatTypeOf!(type)[count], formatTypeTupleOf!(format[firstNonDigit+1..$]));
 		else
-			alias formatTypeTupleOf = TypeTuple!(formatTypeTupleOf!(type.repeat(count).array));
+			alias formatTypeTupleOf = formatTypeOf!(type)[count];
 	}
 	else static if ( __traits(compiles, formatTypeOf!(format[0])) ) {
 		static if (format.length == 1)
@@ -839,6 +881,14 @@ private template formatCharToEndian(char c)
 		enum formatCharToEndian = Endian.Native;
 	else
 		enum formatCharToEndian = -1;
+}
+
+private template isFirstArgFile(V...)
+{
+	static if(V.length > 0 && is(V[0] == File))
+		enum bool isFirstArgFile = true;
+	else
+		enum bool isFirstArgFile = false;
 }
 
 private mixin template repeatCount(string format)
@@ -867,13 +917,27 @@ unittest
 	static assert(is(formatTypeTupleOf!`csbB` == TypeTuple!(char, string, byte, ubyte)));
 	static assert(is(formatTypeTupleOf!`fxd`  == TypeTuple!(float, double)));
 	static assert(is(formatTypeTupleOf!`x`    == TypeTuple!()));
-	static assert(is(formatTypeTupleOf!`3cx2h`== TypeTuple!(char, char, char, short, short)));
+	static assert(is(formatTypeTupleOf!`3cx2h`== TypeTuple!(char[3], short[2])));
 
-	
 	{
 		ubyte[] bytes = pack!`cc`('a', 'b');
 		assert(bytes == ['a', 'b']);
 		assert(bytes.unpack!`cc` == tuple('a', 'b'));
+		assert(bytes == []);
+	}
+	
+	{
+		ubyte[] bytes = pack!`4xx`;
+		assert(bytes == [0, 0, 0, 0, 0]);
+		assert(bytes.save.unpack!`5c` == tuple(['\0', '\0', '\0', '\0', '\0']));
+		ubyte a,b,c,d,e;
+		bytes.unpackTo!`5c`(a,b,c,d,e);
+		assert(a == 0);
+		assert(b == 0);
+		assert(c == 0);
+		assert(d == 0);
+		assert(e == 0);
+		assert(bytes == []);
 	}
 
 	{
@@ -881,25 +945,28 @@ unittest
 		assert(bytes == [15, 0, 0, 30]);
 		assert(bytes.save.unpack!`<h>h` == tuple(15, 30));
 		assert(bytes.unpack!`>I`() == tuple(251658270));
+		assert(bytes == []);
 	}
 
 	{
 		ubyte[] bytes = pack!`s`("a");
 		assert(bytes == ['a', 0]);
 		assert(bytes.unpack!`s`() == tuple("a"));
+		assert(bytes == []);
 	}
 
 	{
 		ubyte[] bytes = pack!`h3x2c`(56, 'a', 'c');
 		assert(bytes == [56, 0,  0, 0, 0,  'a', 'c']);
-		assert(bytes.unpack!`h3x2c`() == tuple(56, 'a', 'c'));
+		assert(bytes.unpack!`h3x2c`() == tuple(56, ['a', 'c']));
+		assert(bytes == []);
 	}
 
 	{
 		ubyte[] bytes = pack!`S`("Hello");
 		assert(bytes == ['H', 'e', 'l', 'l', 'o']);
 		auto values = bytes.save.unpack!`5c`();
-		assert(values == tuple('H', 'e', 'l', 'l', 'o'));
+		assert(values == tuple(['H', 'e', 'l', 'l', 'o']));
 		assert(bytes.unpack!`s`() == tuple("Hello"));
 	}
 
@@ -910,6 +977,18 @@ unittest
 		file.pack!`<hxsH`(95, "Hello", 42);
 		file.rewind();
 		assert(file.unpack!`<hxsH` == tuple(95, "Hello", 42));
+		assert(file.eof);
+	}
+	
+	{
+		auto file = File.tmpfile;
+		scope(exit) file.close();
+		
+		file.pack!`<hxhx`(95, 51);
+		file.rewind();
+		assert(file.unpack!`<hx` == tuple(95));
+		assert(file.unpack!`<hx` == tuple(51));
+		assert(file.eof);
 	}
 
 	{
@@ -924,5 +1003,23 @@ unittest
 		assert(unpacker.front == tuple('z', 510, " World"));
 		unpacker.popFront();
 		assert(unpacker.empty);
+	}
+
+	{
+		File file = File.tmpfile;
+		scope(exit) file.close;
+		file.pack!`<bhsbhs`(65, 105, "Hello", 'z', 510, " World");
+		
+		file.rewind();
+		auto unpacker = unpacker!`<bhs`(file);
+		static assert(isInputRange!(typeof(unpacker)));
+		assert(!unpacker.empty);
+		assert(unpacker.front == tuple(65, 105, "Hello"));
+		unpacker.popFront();
+		assert(!unpacker.empty);
+		assert(unpacker.front == tuple('z', 510, " World"));
+		unpacker.popFront();
+		assert(unpacker.empty);
+		assert(file.eof);
 	}
 }
