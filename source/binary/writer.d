@@ -91,9 +91,9 @@ struct BinaryWriter
 	 *  times  = Number of repeats
 	 *  value  = Value to fill
 	 */
-	void fill(ulong times, ubyte value = 0)
+	void fill(size_t times, ubyte value = 0)
 	{
-		buffer ~= value.repeat(times).array;
+		buffer ~= repeat(value, times).array;
 		position += times;
 	}
 
@@ -107,11 +107,11 @@ struct BinaryWriter
 	 *  offset = Offset to align to
 	 *  value  = Value to fill with if needed
 	 */
-	void padFill(ulong offset, ubyte value = 0)
+	void padFill(size_t offset, ubyte value = 0)
 	{
-		if (cast(long)(offset - position) < 0) return;
+		if (cast(ptrdiff_t)(offset - position) < 0) return;
 		
-		fill(offset - position, value);
+		fill(cast(size_t)(offset - position), value);
 	}
 	
 	/**
