@@ -249,6 +249,13 @@ unittest
 		assert(bytes.unpack!`<h8Xi` == tuple(18, -3));
 		assert(bytes == []);
 	}
+
+	{
+		ubyte[] bytes = pack!`oboh`(true, true, false, false);
+		assert(bytes == [1, 1, 0,  0, 0]);
+		assert(bytes.unpack!`<oboh` == tuple(true, true, false, 0));
+		assert(bytes == []);
+	}
 	
 	{
 		long l;

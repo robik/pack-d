@@ -28,6 +28,8 @@ template formatTypeOf(char c)
 		alias formatTypeOf = byte;
 	else static if(c == 'B')
 		alias formatTypeOf = ubyte;
+	else static if(c == 'o')
+		alias formatTypeOf = bool;
 	else static if(c == 'h')
 		alias formatTypeOf = short;
 	else static if(c == 'H')
@@ -129,6 +131,8 @@ template formatCharOf(Type)
 		enum char formatCharOf = 'b';
 	else static if(is(T == ubyte))
 		enum char formatCharOf = 'B';
+	else static if(is(T == bool))
+		enum char formatCharOf = 'o';
 	else static if(is(T == char))
 		enum char formatCharOf = 'c';
 	else static if(is(T == wchar))
@@ -214,7 +218,7 @@ unittest
 {
 	static assert(formatCharOf!int != '\0');
 	static assert(formatCharOf!void == '\0');
-	static assert(formatOf!(char, string, byte, ubyte, short, ushort) == "csbBhH");
+	static assert(formatOf!(char, string, byte, ubyte, bool, short, ushort) == "csbBohH");
 	static assert(formatOf!(int, uint, long, ulong, float, double) == "iIlLfd");
 	static assert(formatCharToEndian!'<' == ByteOrder.LittleEndian);
 	static assert(formatCharToEndian!'>' == ByteOrder.BigEndian);
@@ -224,6 +228,7 @@ unittest
 	static assert(is(formatTypeTupleOf!`hHiI` == TypeTuple!(short, ushort, int, uint)));
 	static assert(is(formatTypeTupleOf!`pPlL` == TypeTuple!(ptrdiff_t, size_t, long, ulong)));
 	static assert(is(formatTypeTupleOf!`csbB` == TypeTuple!(char, char[], byte, ubyte)));
+	static assert(is(formatTypeTupleOf!`obo` ==  TypeTuple!(bool, byte, bool)));
 	static assert(is(formatTypeTupleOf!`fxd`  == TypeTuple!(float, double)));
 	static assert(is(formatTypeTupleOf!`x`    == TypeTuple!()));
 	static assert(is(formatTypeTupleOf!`3cx2h`== TypeTuple!(char[3], short[2])));
