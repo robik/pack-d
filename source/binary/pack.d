@@ -251,7 +251,7 @@ unittest
 	}
 
 	{
-		ubyte[] bytes = pack!`oboh`(true, true, false, false);
+		ubyte[] bytes = pack!`<oboh`(true, true, false, false);
 		assert(bytes == [1, 1, 0,  0, 0]);
 		assert(bytes.unpack!`<oboh` == tuple(true, true, false, 0));
 		assert(bytes == []);
@@ -367,5 +367,12 @@ unittest
 		unpacker.popFront();
 		assert(unpacker.empty);
 		assert(file.eof);
+	}
+
+	{
+		// Issue #4
+		ubyte[] bytes = pack!`>L`(12);
+		assert(bytes == [0, 0, 0, 0,  0, 0, 0, 12]);
+		assert(bytes.unpack!`>L`[0] == 12UL);
 	}
 }

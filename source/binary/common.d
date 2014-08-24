@@ -35,10 +35,10 @@ ubyte[] encodeBinary(T)(T value, ByteOrder byteOrder = ByteOrder.Native)
 	switch(byteOrder) with (ByteOrder)
 	{
 		case BigEndian:
-			return nativeToBigEndian(value);
+			return nativeToBigEndian!T(value).dup;
 
 		case LittleEndian:
-			return nativeToLittleEndian(value);
+			return nativeToLittleEndian!T(value).dup;
 
 		case Native:
 			ubyte[T.sizeof] buf;

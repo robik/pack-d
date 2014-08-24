@@ -63,7 +63,7 @@ struct BinaryWriter
 				write(el);
 		}
 		else {
-			ubyte[] data = encodeBinary(value, byteOrder);
+			ubyte[] data = encodeBinary!T(value, byteOrder);
 			position += data.length;
 			buffer ~= data;
 		}
@@ -167,4 +167,12 @@ unittest
 	writer.padFill(10);
 	assert(writer.buffer == ['n', 'a', 'm', 'e', 0, 0, 0, 0, 0, 0]);
 	assert(writer.position == 10);
+
+	writer.clear();
+
+	// Issue #4
+	writer.byteOrder = ByteOrder.BigEndian;
+	writer.write(cast(ulong)12);
+	assert(writer.position == 8);
+	assert(writer.buffer == [0, 0, 0,  0, 0, 0, 0, 12]);
 }
