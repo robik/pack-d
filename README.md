@@ -1,5 +1,7 @@
 ## pack-d
 
+[![Build Status](https://travis-ci.org/robik/pack-d.svg?branch=master)](https://travis-ci.org/robik/pack-d)
+
 ### License
 
 Licensed under `MIT License`. See `LICENSE` file.
@@ -10,24 +12,17 @@ Licensed under `MIT License`. See `LICENSE` file.
 Pack-D is small binary IO helper written in [D Programming Language](http://dlang.org) based on Python's `struct` module. It provides simple interface for reading and writing binary encoded data.
 
 
-### Installation
+### Documentation
 
-__Manual__
+Documentation can be found on [project's wiki](https://github.com/robik/pack-d/wiki).
 
-Download `source/binary/pack.d` and add it to your project.
+### Issues
 
-__Using DUB__
-
-Add `pack-d` dependency to your `package.json` file:
-
-    "dependencies": {
-    	"pack-d": ">=0.1.0"
-    }
-
+If you encounter any issues with examples/documentation feel free to report issue [here](https://github.com/robik/pack-d/issues).
 
 ### Example
 
-```D
+```d
 import binary.pack;
 import std.stdio;
 
@@ -53,109 +48,3 @@ void main()
     writeln(bytes.unpack!`>H4xL`); /// Tuple!(ushort, ulong)(42, 150)
 }
 ```
-
-### Format reference
-
-Most Pack-D functions use a format string to define types of values. 
-Format strings can be ommited and value types are inferred,
-although it is strongly recommended to specify it whenever possible.
-
-Format strings used in general are very similar to [format strings used by Python's `struct` module](http://docs.python.org/2/library/struct.html#format-strings).
-
-__Available modifier characters__
-  
-  Character   | Effect
-  ------------|--------------------
-  `=`         | Use native endian byte order
-  `<`         | Use little endian byte order
-  `>`         | Use big endian byte order
-  `@`         | Use network byte order(big endian)
-  
-
-__Available type specifiers__
-  
-  Character  | Type       | Size  
-  -----------|------------|----------
-  `c`        | `char`     | 1
-  `b`        | `byte`     | 1
-  `B`        | `ubyte`    | 1
-  `h`        | `short`    | 2 
-  `H`        | `ushort`   | 2
-  `i`        | `int`      | 4
-  `I`        | `uint`     | 4
-  `p`        | `ptrdiff_t`| 4/8
-  `P`        | `size_t`   | 4/8
-  `l`        | `long`     | 8
-  `L`        | `ulong`    | 8
-  `f`        | `float`    | 4
-  `d`        | `double`   | 8
-  `s`        | `string`   | string length + nul
-  `S`        | `string`   | string length
-  `x`        | -          | 1 (null/skip byte)
-
-
-> __TIP__: Common rule for (almost) all type specifiers is that all lowercase letters represent signed types and
-uppercase letters represent unsigned types.
-
-Types with size `4/8` (`p` and `P`) depend on local machine architecture. On 32 bit architectures they occupy 4 bytes, on 64 bit architectures they occupy 8 bytes.
-
-Additionaly all type specifiers can be preceded by number of occurences.
-For example, `pack!"cc"('a', 'b')` is equivalent to `pack!"2c"('a', 'b')`.
-Note that behaviour is different with strings: if type specifier is preceded by
-a number and parameter is an array, `n` characters are packed.
-For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
-
-When number appears in `unpack` format string, returned type is an static array. For example, type of `unpack!"6h"` is `short[6]`.
-
-Character `x` have slighty different meaning depending if used in `pack` or `unpack` functions. When passed to `pack`, null byte is added to output. When passed to `unpack`, one byte is skipped from input data.
-
-__Examples__:
-
- - `2h`  2 signed shorts (native endian)
- - `<2I` 2 insigned integers (little endian)
- - `i4xL` signed integer, 4 null bytes and unsigned long
- - `Sx` or `s` null terminated string
-
-### Quick API reference
-
- - `pack([string format])(T... params)`
-
-   Packs specified parameters according to `format`. Passing inconvertible parameter and type specifier,
-   results in static assert failure. All packed data is returned as `ubyte[]`.
-   
- - `pack([string format])(File file, T... params)`
-   
-   Works exacly like previous one, except that all packed data is written to `file`.
-
- - `unpackTo([string format])([ref] Range range, T... params)` <br/>
-   `unpackTo([string format])(File range, T... params)`
-   
-   Unpacks data from `range` or `file` and writes it to `params`. Range is taken by refernce whenever possible 
-   (`auto ref`), which means passed array of bytes is modified. To prevent that, pass `yourarray.save` as 
-   first parameter.
-
-   > __NOTE__: Specified `Range` must be a valid input range of `ubyte` element type.
-  
- - `unpack(string format)([ref] Range range)` <br/>
-   `unpack(string format)(File file)`
-   
-   Works exacly like previous one, except that all data is returned as tuple. 
-   In this overload `format` is __required__.
-
- - `unpacker(string format)( Range range)` <br/>
-   `unpacker(string format)(File range)` <br/>
-   
-   Returns instance of `Unpacker` struct. Useful when there's repeating binary encoded data.
-
-   ```D
-   ubyte[] bytes = pack!`<hshs`(1, "one", 2, "two");
-   auto unpacker = unpacker!`<hs`(bytes);
-   
-   foreach(num, str; unpacker)
-   {
-       writeln(num, " ", str); // Prints 1 one\n 2 two
-   }
-   ```
-
-
-
