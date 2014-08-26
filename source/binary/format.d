@@ -5,6 +5,7 @@ import std.algorithm;
 import std.conv;
 import std.typetuple;
 import std.range;
+import std.traits;
 import binary.common;
 
 
@@ -78,7 +79,14 @@ template formatTypeTupleOf(string format)
 	// Pad bytes
 	else static if (formatIsTypeLess!(format[0]))
 		alias formatTypeTupleOf = formatTypeTupleOf!(format[1..$]);
-	
+
+	else static if (format[0] == '*')
+	{
+		static assert(format.length > 1, "Star cannot be last character.");
+		static assert(format[1].isAlpha, "Star must be followed by type character.");
+
+		alias formatTypeTupleOf = TypeTuple!(formatTypeOf!(format[1])[], formatTypeTupleOf!(format[2..$]));
+	}
 	// Repeats
 	else static if (isDigit(format[0]))
 	{
@@ -109,56 +117,65 @@ template formatTypeTupleOf(string format)
 
 
 /**
- * Maps D type to corresponding format type character.
+ * Maps D type to corresponding format type string.
  * 
- * To get format string from TypeTuple, use `formatOf` instead.
+ * To get complete format string from TypeTuple, use `formatOf` instead.
  * 
- * Any unsupported or not mutable type results null character.
+ * Any unsupported or not mutable type results in static assert failure.
  * To see supported format specifiers and types, see `pack` function documentaton.
- * 
- * If array type or input range is passed, format character for value
- * type is returned instead.
  */
-template formatCharOf(Type)
+template formatStringOf(Type)
 {
-	static if(isInputRange!Type) {
-		alias T = ElementEncodingType!Type;
-	} else {
-		alias T = Type;
+	static if(isSomeString!Type) {
+		enum string formatStringOf = "s";
 	}
-	
-	static if(is(T == byte))
-		enum char formatCharOf = 'b';
-	else static if(is(T == ubyte))
-		enum char formatCharOf = 'B';
-	else static if(is(T == bool))
-		enum char formatCharOf = 'o';
-	else static if(is(T == char))
-		enum char formatCharOf = 'c';
-	else static if(is(T == wchar))
-		enum char formatCharOf = 'u';
-	else static if(is(T == dchar))
-		enum char formatCharOf = 'U';
-	else static if(is(T == short))
-		enum char formatCharOf = 'h';
-	else static if(is(T == ushort))
-		enum char formatCharOf = 'H';
-	else static if(is(T == int))
-		enum char formatCharOf = 'i';
-	else static if(is(T == uint))
-		enum char formatCharOf = 'I';
-	else static if(is(T == long))
-		enum char formatCharOf = 'l';
-	else static if(is(T == ulong))
-		enum char formatCharOf = 'L';
-	else static if(is(T == float))
-		enum char formatCharOf = 'f';
-	else static if(is(T == double))
-		enum char formatCharOf = 'd';
-	else static if(is(Type == string) || is(Type == wstring))
-		enum char formatCharOf = 's';
-	else
-		enum char formatCharOf = 0;
+	else {
+		static if (isDynamicArray!Type) {
+			enum string prefix = "*";
+			alias T = ElementEncodingType!Type;
+		} 
+		else static if (isStaticArray!Type) {
+			enum string prefix = Type.length.stringof;
+			alias T = ElementEncodingType!Type;
+		}
+		else {
+			enum string prefix = "";
+			alias T = Type;
+		}
+		
+		static if(is(T == byte))
+			enum string formatStringOf = prefix ~ "b";
+		else static if(is(T == ubyte))
+			enum string formatStringOf = prefix ~ "B";
+		else static if(is(T == bool))
+			enum string formatStringOf = prefix ~ "o";
+		else static if(is(T == char))
+			enum string formatStringOf = prefix ~ "c";
+		else static if(is(T == wchar))
+			enum string formatStringOf = prefix ~ "u";
+		else static if(is(T == dchar))
+			enum string formatStringOf = prefix ~ "U";
+		else static if(is(T == short))
+			enum string formatStringOf = prefix ~ "h";
+		else static if(is(T == ushort))
+			enum string formatStringOf = prefix ~ "H";
+		else static if(is(T == int))
+			enum string formatStringOf = prefix ~ "i";
+		else static if(is(T == uint))
+			enum string formatStringOf = prefix ~ "I";
+		else static if(is(T == long))
+			enum string formatStringOf = prefix ~ "l";
+		else static if(is(T == ulong))
+			enum string formatStringOf = prefix ~ "L";
+		else static if(is(T == float))
+			enum string formatStringOf = prefix ~ "f";
+		else static if(is(T == double))
+			enum string formatStringOf = prefix ~ "d";
+		/*else static if(isSomeString!Type)
+			enum char formatCharOf = 's';*/
+		else
+			static assert(0, "Unsupported type "~ Type.stringof);
+	}
 }
 
 
@@ -168,9 +185,9 @@ template formatCharOf(Type)
 template formatOf(T, V...)
 {
 	static if (V.length == 0)
-		enum char formatOf = formatCharOf!T;
+		enum string formatOf = formatStringOf!T;
 	else
-		enum string formatOf = [formatCharOf!T] ~ formatOf!(V);
+		enum string formatOf = formatStringOf!T ~ formatOf!(V);
 	
 }
 
@@ -216,10 +233,12 @@ template formatCharToEndian(char c)
 
 unittest
 {
-	static assert(formatCharOf!int != '\0');
-	static assert(formatCharOf!void == '\0');
+	static assert(formatStringOf!int != "\0");
+	static assert(!__traits(compiles, formatStringOf!void)); // does not compile
 	static assert(formatOf!(char, string, byte, ubyte, bool, short, ushort) == "csbBohH");
 	static assert(formatOf!(int, uint, long, ulong, float, double) == "iIlLfd");
+	static assert(formatOf!(int[], uint[], long, ulong[], float, double[]) == "*i*Il*Lf*d");
+
 	static assert(formatCharToEndian!'<' == ByteOrder.LittleEndian);
 	static assert(formatCharToEndian!'>' == ByteOrder.BigEndian);
 	static assert(formatCharToEndian!'@' == ByteOrder.BigEndian);
@@ -234,7 +253,8 @@ unittest
 	static assert(is(formatTypeTupleOf!`3cx2h`== TypeTuple!(char[3], short[2])));
 	static assert(is(formatTypeTupleOf!` `    == TypeTuple!()));
 	static assert(is(formatTypeTupleOf!`h   2c`    == TypeTuple!(short, char[2])));
-	static assert(is(formatTypeTupleOf!`h <I  2c`    == TypeTuple!(short, uint, char[2])));
+	static assert(is(formatTypeTupleOf!`h <I  2c`  == TypeTuple!(short, uint, char[2])));
+	static assert(is(formatTypeTupleOf!`*hI*c`     == TypeTuple!(short[], uint, char[])));
 
 	static assert(formatIsTypeLess!'<' == true);
 	static assert(formatIsTypeLess!'x' == true);

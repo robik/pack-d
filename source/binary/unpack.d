@@ -6,6 +6,7 @@ import std.stdio;
 import std.range;
 import std.typecons;
 import std.traits;
+import std.string;
 import binary.common;
 import binary.format;
 import binary.reader;
@@ -144,8 +145,20 @@ void unpackTo(string format, Range, V...)(ref BinaryReader!Range reader, ref V v
 		reader.byteOrder = formatCharToEndian!current;
 		unpackTo!(format[1..$])(reader, values);
 	}
-	
-	// Repeats
+
+	// Dynamic arrays
+	else static if (current == '*') {
+		static assert(format.length > 1, "Expected star to be followed by type character");
+		static assert(V.length > 0, "Missing parameter for type character *"~format[1]);
+		static assert(isArray!(V[0]), .format("Expected parameter to be an array, %s given", V[0].stringof));
+		alias TargetType = formatTypeOf!(format[1]);
+		reader.read(cast(TargetType[])values[0]);
+		
+		static if (format.length > 2)
+			unpackTo!(format[2..$])(reader, values[1..$]);
+	}
+
+	// Static arrays
 	else static if (isDigit(current))
 	{
 		// Creates result* variables in local scope
@@ -199,7 +212,17 @@ void unpackTo(string format, Range, V...)(ref BinaryReader!Range reader, ref V v
 		// If value is convertible to format character
 		static if (__traits(compiles, cast(formatTypeOf!current)values[0])) {
 			formatTypeOf!current val;
-			reader.read(val);
+			static if (current == 's')
+				reader.readString(val);
+			else static if (current == 'S') {
+				if (val.length == 0) {
+					throw new DecodeException("Reading string with length 0 ('S' passed to unpack and parameter array length is 0)");
+				}
+				reader.readArray(val, val.length);
+			}
+			else
+				reader.read(val);
+
 			values[0] = cast(V[0])val;
 		}
 		else

@@ -95,7 +95,8 @@ struct BinaryReader(Range = ubyte[])
 	 */
 	void skipTo(size_t offset)
 	{
-		if (cast(long)(offset - _position) < 0) return;
+		if (cast(long)(offset - _position) < 0)
+			return;
 
 		skipBytes(offset - _position);
 	}
@@ -112,30 +113,62 @@ struct BinaryReader(Range = ubyte[])
 	 * Params:
 	 *  value = Value to read to
 	 */
-	void read(T)(ref T value, string file = __FILE__, uint line = __LINE__)
+	void read(T)(ref T value)
 	{
 		if (empty)
-			throw new DecodeException("Input stream is empty.", file, line);
+			throw new DecodeException("Input stream is empty.");
 
-		static if (is(T : char[])) {
-			static if(isStaticArray!T) {
-				char[] data = cast(char[])readBytes(value.length);
-				value[0..min(data.length, value.length)] = data[0 .. min(value.length, data.length)];
-			} else {
-				value = cast(T)readUntil(0);
-			}
-		}
-		else static if (is (T : wchar[]) || is(T : dchar[])) {
-			ubyte[] bytes = readUntil(0);
-			static assert(0, "Not implemented");
-		}
-		else static if (isArray!T) {
+		static if (isStaticArray!T) {
 			foreach(ref el; value)
-				read(el, file, line);
+				read!(ElementEncodingType!T)(el);
+		}
+		else static if (isDynamicArray!T) {
+			uint size;
+			read(size);
+			value.length = cast(size_t)size;
+			readArray!(ElementEncodingType!T)(value, value.length);
 		}
 		else {
-			value = decodeBinary!T(readBytes(T.sizeof), byteOrder, file, line);
+			value = decodeBinary!T(readBytes(T.sizeof), byteOrder);
 		}
+	}
+
+
+	/**
+	 * Reads array with `length` elements.
+	 * 
+	 * Throws:
+	 *  DecodeException
+	 * 
+	 * Params:
+	 *  arr = Array to read to.
+	 *  length = Number of elements to read.
+	 */
+	void readArray(T)(ref T[] arr, size_t length)
+	{
+		arr.length = length;
+		for(size_t i=0; i<length; i++) {
+			read!T(arr[i]);
+		}
+	}
+
+
+	/**
+	 * Reads string into `str`.
+	 * 
+	 * Reads until null terminator. If not found, DecodeException is thrown.
+	 * 
+	 * Throws:
+	 *  DecodeException
+	 * 
+	 * Params:
+	 *  str = String to read to
+	 */
+	void readString(T)(ref T str)
+		if (isSomeString!T)
+	{
+		char[] data = cast(char[])readUntil(0);
+		str = cast(T)data;
 	}
 
 	
@@ -150,11 +183,44 @@ struct BinaryReader(Range = ubyte[])
 	 * Returns:
 	 *  Read value of type T.
 	 */
-	T read(T)(string file = __FILE__, uint line = __LINE__)
+	T read(T)()
 	{
 		T value;
-		read!T(value, file, line);
+		read!T(value);
 		return value;
+	}
+
+	/**
+	 * Reads array of type T with `num` elemetns and returns it.
+	 * 
+	 * Throws:
+	 *  DecodeException
+	 * 
+	 * Returns:
+	 *  Array with `num` elements.
+	 */
+	T[] readArray(T)(size_t num)
+	{
+		T[] arr = new T[num];
+		readArray(arr, num);
+		return arr;
+	}
+
+
+	/**
+	 * Reads string and returns it.
+	 * 
+	 * See_Also:
+	 *  `readString`
+	 * 
+	 * Returns:
+	 *  Read string.
+	 */
+	string readString()
+	{
+		string str;
+		readString(str);
+		return str;
 	}
 
 	
@@ -311,13 +377,13 @@ unittest
 
 	char[] str;
 	reader.source = ['a', 'b', 'c'];
-	reader.read(str);
+	reader.readArray(str, cast(size_t)3);
 	assert(str == "abc".dup);
 	assert(reader.empty);
 
 	reader.source = ['x', 'y', 'z', 0, 90, 0];
 	reader.byteOrder = ByteOrder.LittleEndian;
-	reader.read(str);
+	reader.readString(str);
 	reader.read(sh);
 	assert(str == "xyz".dup);
 	assert(sh  == 90);
@@ -338,11 +404,22 @@ unittest
 	assert(l == 56);
 	assert(reader.empty);
 
-	reader.source = ['a', 'b', 'c', 0, 0, 0, 0, 0, 15, 0];
+	reader.source = ['a', 'b', 'c', 0,  0, 0, 0, 0, 15, 0];
 	assert(reader.position == 0);
-	assert(reader.read!(char[]) == "abc".dup);
+	assert(reader.readString == "abc".dup);
 	assert(reader.source == [0, 0, 0, 0, 15, 0]);
 	reader.skipTo(8);
 	assert(reader.source == [15, 0]);
 	assert(reader.read!short == 15);
+
+	reader.source = [10, 20, 30, 40];
+	assert(reader.readArray!byte(4) == [10, 20, 30, 40]);
+
+	reader.byteOrder = ByteOrder.BigEndian;
+	reader.source = [0, 0, 0, 3, 0, 99, 0, 55, 0, 44];
+	assert(reader.read!(ushort[])() == [99, 55, 44]);
+
+	reader.source = [0, 0, 0, 5, 'H', 'e', 'l', 'l', 'o'];
+	reader.read(str);
+	assert(str == "Hello".dup);
 }

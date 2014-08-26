@@ -7,6 +7,7 @@ import std.range;
 import std.typetuple;
 import std.typecons;
 import std.traits;
+import std.string;
 import binary.common;
 import binary.writer;
 import binary.format;
@@ -51,11 +52,22 @@ import binary.format;
  * `x`        | -          | 1 (zero byte)
  * `X`        | -          | Skip/Pad to position
  * 
- * All type specifiers (from table above) can be preceded by number of occurences.
- * For example, `pack!"cc"('a', 'b')` is equivalent to `pack!"2c"('a', 'b')`.
- * Note that behaviour is different with strings. If type specifier is preceded by
- * a number and parameter is an array, `n` elements are packed.
- * For example: `pack!"5c"("Hello World")` will pack only first 5 characters.
+ * 
+ * Array behavior (All examples in little endian)
+ * 
+ * Type spec.      | Data       | Description                   | Encoded        
+ * ----------------|------------|-------------------------------|---------------
+ * `int`(`i`)      | 12         | Binary encoded integer        | `[0, 0, 0, 12]`
+ * `int`(`i`)      | [12, 21]   | Written element by element    | `[0, 0, 0, 12, 0, 0, 0, 21]`
+ * `int[]`(`*i`)   | [12, 21]   | Length and elements written   | `[0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 21]`
+ * `int[2]`(`2i`)  | [12, 21]   | Written same as `i`           | `[0, 0, 0, 12, 0, 0, 0, 21]`
+ * `int[1]`(`1i`)  | [12, 21]   | Only 1 element is written     | `[0, 0, 0, 12]`
+ * 
+ * Quick Notes:
+ *  - `s` is an alias for `Sx`
+ *  - To write strings like all other arrays use `*c` format.
+ *  - In `pack` using `#i` on array of elements will write exacly # elements.
+ *    If array is too big it is sliced, if too small range error is thrown.
  *
  * Params:
  *  format     = Format specifier
@@ -146,14 +158,25 @@ void pack(string format, V...)(ref BinaryWriter writer, V values)
 		pack!(format[1..$])(writer, values);
 	}
 
-	// Repeats
+	// Dynamic arrays
+	else static if (current == '*') {
+		static assert(format.length > 1, "Expected star to be followed by type character");
+		static assert(V.length > 0, "Missing parameter for type character *"~format[1]);
+		static assert(isArray!(V[0]), .format("Expected parameter to be an array, %s given", V[0].stringof));
+		writer.write(cast(formatTypeOf!(format[1])[])values[0]);
+
+		static if (format.length > 2)
+		pack!(format[2..$])(writer, values[1..$]);
+	}
+
+	// Static arrays
 	else static if (isDigit(current))
 	{
 		// Creates result* variables in local scope
 		mixin formatRepeatCount!format;
 		static if(resultChar == 'x')
 		{
-			writer.write( (cast(ubyte)0).repeat(resultCount).array );
+			writer.writeArray( (cast(ubyte)0).repeat(resultCount).array );
 			pack!(resultRest)(writer, values);
 		}
 		else static if(resultChar == 'X')
@@ -167,16 +190,13 @@ void pack(string format, V...)(ref BinaryWriter writer, V values)
 			alias T = V[0];
 			
 			static if(isArray!T) {
-				writer.write(cast(formatTypeOf!(resultChar)[])values[0][0..resultCount]);
+				alias TargetType = formatTypeOf!resultChar;
+				auto sliced = values[0][0..resultCount];
+				writer.writeArray(sliced.map!(x => cast(TargetType)x).array);
 				pack!(resultRest)(writer, values[1..$]);
 			}
 			else
-			{
-				static assert(values.length + 1 >= resultCount, .format("Expected %d parameters", resultCount));
-				writer.write(values[0..resultCount]);
-				
-				pack!(resultRest)(writer, values[resultCount..$]);
-			}
+				static assert(0, .format("Specified static array in format string but parameter is not an array"));
 		}
 	}
 
@@ -196,12 +216,18 @@ void pack(string format, V...)(ref BinaryWriter writer, V values)
 	else static if ( !is(formatTypeOf!(current) == void) )
 	{
 		static assert(V.length > 0, .format("No parameter specified for character '%c'", current));
-		
-		// If value is convertible to format character
-		static if (__traits(compiles, cast(formatTypeOf!(current))values[0])) {
-			writer.write(cast(formatTypeOf!current)values[0]);
+
+		static if (isArray!(V[0])) {
 			static if (current == 's')
-				writer.write!byte(0);
+				writer.writeString(values[0]);
+			else static if (current == 'S')
+				writer.writeArray(values[0]);
+			else
+				writer.writeArray(values[0][].map!(x => cast(formatTypeOf!current)x).array);
+		}
+		// If value is convertible to format character
+		else static if (__traits(compiles, cast(formatTypeOf!(current))values[0])) {
+			writer.write(cast(formatTypeOf!current)values[0]);
 		}
 		else
 		{
@@ -274,13 +300,13 @@ unittest
 		ubyte[] bytes = pack!`4xx`;
 		assert(bytes == [0, 0, 0, 0, 0]);
 		assert(bytes.save.unpack!`5c` == tuple(['\0', '\0', '\0', '\0', '\0']));
-		ubyte a,b,c,d,e;
-		bytes.unpackTo!`5c`(a,b,c,d,e);
-		assert(a == 0);
-		assert(b == 0);
-		assert(c == 0);
-		assert(d == 0);
-		assert(e == 0);
+		ubyte[5] arr;
+		bytes.unpackTo!`5c`(arr);
+		assert(arr[0] == 0);
+		assert(arr[1] == 0);
+		assert(arr[2] == 0);
+		assert(arr[3] == 0);
+		assert(arr[4] == 0);
 		assert(bytes == []);
 	}
 
@@ -300,7 +326,7 @@ unittest
 	}
 
 	{
-		ubyte[] bytes = pack!`<h3x2c`(56, 'a', 'c');
+		ubyte[] bytes = pack!`<h3xcc`(56, 'a', 'c');
 		assert(bytes == [56, 0,  0, 0, 0,  'a', 'c']);
 		assert(bytes.unpack!`h3x2c`() == tuple(56, ['a', 'c']));
 		assert(bytes == []);
@@ -367,6 +393,41 @@ unittest
 		unpacker.popFront();
 		assert(unpacker.empty);
 		assert(file.eof);
+	}
+
+	{
+		ubyte[] bytes = pack!`>*i2h`([12, 22, 32], [88, 99]);
+		assert(bytes == [0, 0, 0, 3,  0, 0, 0, 12, 0, 0, 0, 22, 0, 0, 0, 32, 0, 88, 0, 99]);
+		assert(bytes.save.unpack!`>*i2h` == tuple([12, 22, 32], [88, 99]));
+	}
+	
+	{
+		ubyte[] bytes = pack!`>*c`("foobar");
+		assert(bytes == [0, 0, 0, 6,  'f', 'o', 'o', 'b', 'a', 'r']);
+		assert(bytes.save.unpack!`>*c` == tuple("foobar"));
+	}
+	
+	{
+		ubyte[] bytes = pack!`>5c`("foobar");
+		assert(bytes == ['f', 'o', 'o', 'b', 'a']);
+		assert(bytes.save.unpack!`>5c` == tuple("fooba"));
+	}
+	
+	{
+		ubyte[] bytes = pack!`>*s`(["c", "c++", "d"]);
+		assert(bytes == [0, 0, 0, 3,  0, 0, 0, 1, 'c',  0, 0, 0, 3, 'c', '+', '+',  0, 0, 0, 1, 'd']);
+		assert(bytes.save.unpack!`>*s` == tuple(["c", "c++", "d"]));
+	}
+
+	{
+		ushort[3] arr = [13, 31, 33];
+		ubyte[] bytes = pack!`<*H`(arr);
+		assert(bytes == [3, 0, 0, 0, 13, 0, 31, 0, 33, 0]);
+		assert(bytes.save.unpack!`<I3H` == tuple(3, [13, 31, 33]));
+
+		bytes = pack!`<H`(arr);
+		assert(bytes == [13, 0, 31, 0, 33, 0]);
+		assert(bytes.unpack!`<3H` == tuple(arr));
 	}
 
 	{
