@@ -1,5 +1,6 @@
 module binary.writer;
 
+import core.stdc.string;
 import std.range;
 import std.traits;
 import binary.common;
@@ -83,7 +84,7 @@ struct BinaryWriter
 			writeArray(value);
 		}
 		else static if (is(T == immutable(char)*)) {
-			size_t len = std.c.string.strlen(value) + 1;
+			size_t len = strlen(value) + 1;
 			buffer.reserve(len);
 			for (size_t i; i<len; i++) {
 				buffer ~= value[i];
@@ -212,6 +213,7 @@ struct BinaryWriter
 unittest
 {
 	import std.stdio;
+	import std.string;
 
 	static assert(isOutputRange!(BinaryWriter, int));
 	static assert(isOutputRange!(BinaryWriter, int[]));

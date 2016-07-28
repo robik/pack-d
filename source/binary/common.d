@@ -45,7 +45,7 @@ ubyte[] encodeBinary(T)(T value, ByteOrder byteOrder = ByteOrder.Native)
 			ubyte* ptr = cast(ubyte*)&value;
 			for(int i=0; i < T.sizeof; i++)
 				buf[i] = ptr[i];
-			return buf[];
+			return buf.dup;
 
 		default:
 			assert(0, "Invalid byte order");

@@ -1,6 +1,7 @@
 module binary.pack;
 
 import std.ascii;
+import std.algorithm;
 import std.array;
 import std.stdio;
 import std.range;
