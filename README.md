@@ -1,6 +1,9 @@
 ## pack-d
 
 [![Build Status](https://travis-ci.org/robik/pack-d.svg?branch=master)](https://travis-ci.org/robik/pack-d)
+[![Version](https://img.shields.io/dub/v/pack-d.svg)](https://code.dlang.org/packages/pack-d)
+[![Downloads](https://img.shields.io/dub/dt/pack-d.svg)](https://code.dlang.org/packages/pack-d)
+![Maintained](https://img.shields.io/maintenance/yes/2016.svg)
 
 ### License
 
