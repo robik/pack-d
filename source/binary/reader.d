@@ -98,7 +98,7 @@ struct BinaryReader(Range = ubyte[])
 		if (cast(long)(offset - _position) < 0)
 			return;
 
-		skipBytes(offset - _position);
+		skipBytes(cast(size_t)(offset - _position));
 	}
 
 	
