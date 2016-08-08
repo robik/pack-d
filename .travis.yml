@@ -1,9 +1,17 @@
 language: d
 
-install:
-  - wget http://downloads.dlang.org/releases/2014/dmd_2.066.0-0_amd64.deb 
-  - sudo dpkg -i dmd_2.066.0-0_amd64.deb
-  - wget http://code.dlang.org/files/dub-0.9.21-linux-x86_64.tar.gz
-  - tar -xzf dub-0.9.21-linux-x86_64.tar.gz
-  
-script: ./dub test
+os:
+  - linux
+  - osx
+
+d:
+ - dmd # latest
+ - dmd-2.071.0
+ - dmd-2.070.2
+ - dmd-2.069.1
+ - dmd-2.068.2
+ - dmd-2.066.0
+ - ldc-0.17.1
+
+script:
+  - dub test --compiler=${DC}
