@@ -18,7 +18,7 @@ It provides simple interface for reading and writing binary encoded data.
 
 ### Documentation
 
-Documentation and installation guide can be found on [project's wiki](https://github.com/robik/pack-d/wiki).
+Documentation and installation guide can be found on [project's page](https://robik.github.io/pack-d/).
 
 ### Issues
 
