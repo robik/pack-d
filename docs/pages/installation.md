@@ -12,13 +12,13 @@ If you are using dub add following dependency to your `dub.json` or `dub.sdl` fi
 {% highlight js %}
 {
     "dependencies": {
-        "pack-d": "{{site.dub_version}}"
+        "pack-d": "~{{site.version}}"
     }
 }
 {% endhighlight %}
 
 {% highlight sdl %}
-dependency "pack-d" version="{{site.dub_version}}"
+dependency "pack-d" version="~{{site.version}}"
 {% endhighlight %}
 
 #### Manual installation

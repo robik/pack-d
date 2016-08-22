@@ -14,9 +14,9 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 title: pack-d
-version: v1.0.1
+version: 1.0.1
 
-baseurl: /pack-d
+baseurl: "/pack-d"
 url: https://robik.github.io/
 
 # Build settings
@@ -25,4 +25,3 @@ markdown: kramdown
 github_repo: robik/pack-d
 github_path: /master/blob/docs/
 dub_package: pack-d
-dub_version: ~1.0.0
